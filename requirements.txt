@@ -1,0 +1,5 @@
+telethon>=1.31.0
+flask>=2.3.3
+pyrogram>=2.0.0
+tgcrypto
+
