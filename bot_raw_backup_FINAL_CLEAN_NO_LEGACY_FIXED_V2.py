@@ -649,7 +649,7 @@ class BackupBotFinalV2:
         try:
             self.api_id = int(os.environ["API_ID"])
             self.api_hash = os.environ["API_HASH"]
-            self.dest_channel = load_destination( int(os.environ["DESTINATION_CHANNEL"])
+            self.dest_channel = load_destination( int(os.environ["DESTINATION_CHANNEL"]))
             self.owner_id = int(os.environ["OWNER_ID"])
         except KeyError as e:
             logger.error("Missing environment variable: %s", e)
