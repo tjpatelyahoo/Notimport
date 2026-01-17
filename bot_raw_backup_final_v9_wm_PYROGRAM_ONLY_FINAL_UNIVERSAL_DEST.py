@@ -6,7 +6,7 @@ DEST_FILE = "destination.json"
 def load_destination(default_dest):
     try:
         with open(DEST_FILE, "r", encoding="utf-8") as f:
-            return int(json.load(f).get("dest")))
+            return int(json.load(f).get("dest"))
     except Exception:
         return default_dest
 
