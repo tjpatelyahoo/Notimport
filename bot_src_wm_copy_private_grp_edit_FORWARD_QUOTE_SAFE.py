@@ -1109,12 +1109,12 @@ class BackupBotFinalV2:
                             failures += 1
                             dlog("tgproforward: re-upload fallback error:", e_reup)
                         continue
-                    # Not protected -> use copy_message to hide sender and preserve media/caption
-                    try:
+        # Not protected -> use copy_message / text fallback
+
                     cap = extract_src_caption(msg_obj)
                     cap = apply_filters(cap, self.filters)
 
-                    # Quote / rich-entity safe forward
+                    # Quote / rich-entity safe forward (boxed / formatted text)
                     if msg_obj.entities or msg_obj.caption_entities:
                         await self.app.send_message(
                             self.dest_channel,
@@ -1124,8 +1124,9 @@ class BackupBotFinalV2:
                         await asyncio.sleep(random.uniform(1.0, 2.5))
                         continue
 
-                    await self.app.copy_message(self.dest_channel, chat_id, mid)
-                    forwarded += 1
+                    try:
+                        await self.app.copy_message(self.dest_channel, chat_id, mid)
+                        forwarded += 1
                         dlog("tgproforward: copy_message succeeded for", mid)
                         await asyncio.sleep(random.uniform(1.0, 2.0))
                     except Exception as e_copy:
