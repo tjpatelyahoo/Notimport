@@ -1240,7 +1240,7 @@ class BackupBotFinalV2:
                 dlog("clearfilters failed:", e)
                 await m.reply_text("❌ Failed to clear filters.", quote=True)
 
-@self.app.on_message(filters.command("listfilters") & owner_only)
+        @self.app.on_message(filters.command("listfilters") & owner_only)
         async def listfilters_cmd(c, m: Message):
             if not self.filters:
                 await m.reply_text("No filters set.", quote=True)
