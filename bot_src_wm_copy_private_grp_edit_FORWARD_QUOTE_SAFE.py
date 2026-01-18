@@ -1111,7 +1111,7 @@ class BackupBotFinalV2:
                         continue
                     # Not protected -> use copy_message to hide sender and preserve media/caption
                     try:
-                        cap = extract_src_caption(msg_obj)
+                    cap = extract_src_caption(msg_obj)
                     cap = apply_filters(cap, self.filters)
 
                     # Quote / rich-entity safe forward
