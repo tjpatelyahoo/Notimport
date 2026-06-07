@@ -1,6 +1,6 @@
 """
 Batch Text Watermark Bot
-- Fixed watermark text: @VIP_Official_gang_Bot
+- Watermark text from environment variable
 - Process multiple videos one by one
 - Cancel command to stop processing
 - Auto-cleanup after each video
@@ -23,8 +23,8 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 PORT = int(os.environ.get("PORT", 10000))
 DEBUG = os.environ.get("DEBUG", "0") == "1"
 
-# Fixed watermark text (no changes needed)
-WATERMARK_TEXT = os.environ.get("WATERMARK_TEXT", " ")
+# Watermark text from environment variable
+WATERMARK_TEXT = os.environ.get("WATERMARK_TEXT", "@YourChannel")
 MAX_VIDEO_SIZE_MB = 2000
 
 # ---------- LOGGING ----------
@@ -45,15 +45,16 @@ def health():
 
 # ---------- FFMPEG FUNCTIONS ----------
 async def add_text_watermark(input_path: str, output_path: str = None, font_size: int = 30) -> Optional[str]:
-    """Add fixed text watermark to video"""
+    """Add text watermark to video"""
     try:
         if not output_path:
             base, ext = os.path.splitext(input_path)
             output_path = f"{base}_watermarked{ext}"
         
         # Escape special characters
-        safe_text = WATERMARK_TEXT.replace("'", "'\\''").replace(":", "\\:")
+        safe_text = WATERMARK_TEXT.replace("'", "'\\''").replace(":", "\\:").replace("@", "\\@")
         
+        # Simpler command that works on Render
         cmd = [
             "ffmpeg",
             "-y",
@@ -66,28 +67,37 @@ async def add_text_watermark(input_path: str, output_path: str = None, font_size
             output_path
         ]
         
+        logger.info(f"Running ffmpeg on {input_path}")
+        
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
         
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
-        
-        if proc.returncode != 0:
-            logger.error(f"FFmpeg error: {stderr.decode()[:500]}")
-            return None
-        
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-            return output_path
-        else:
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+            
+            if proc.returncode != 0:
+                error_msg = stderr.decode()[:500]
+                logger.error(f"FFmpeg error: {error_msg}")
+                return None
+            
+            if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                logger.info(f"Watermark added successfully")
+                return output_path
+            else:
+                logger.error("Output file missing")
+                return None
+                
+        except asyncio.TimeoutError:
+            logger.error("FFmpeg timeout - killing process")
+            proc.kill()
+            await proc.wait()
             return None
             
-    except asyncio.TimeoutError:
-        logger.error("FFmpeg timeout")
-        return None
     except Exception as e:
-        logger.error(f"Exception: {e}")
+        logger.error(f"Exception in watermark: {e}")
         return None
 
 async def generate_video_thumbnail(video_path: str, second: int = 10) -> Optional[str]:
@@ -168,10 +178,18 @@ class BatchWatermarkBot:
         
         # Batch processing variables
         self.is_processing = False
-        self.current_task = None
         self.cancel_flag = False
         self.processing_queue = []
         self.status_msg = None
+        self.current_chat_id = None
+    
+    async def safe_edit(self, text: str):
+        """Safely edit status message"""
+        try:
+            if self.status_msg:
+                await self.status_msg.edit_text(text)
+        except Exception as e:
+            logger.error(f"Failed to edit message: {e}")
     
     async def download_media(self, message: Message) -> Optional[str]:
         """Download video from message"""
@@ -191,18 +209,17 @@ class BatchWatermarkBot:
             logger.error(f"Download failed: {e}")
         return None
     
-    async def process_single_video(self, message: Message, video_path: str, index: int, total: int):
+    async def process_single_video(self, message: Message, video_path: str, index: int, total: int) -> bool:
         """Process a single video with watermark"""
         try:
             # Update status
-            if self.status_msg:
-                await self.status_msg.edit_text(
-                    f"🎬 Processing video {index}/{total}\n"
-                    f"📥 File: {os.path.basename(video_path)}\n"
-                    f"📏 Size: {os.path.getsize(video_path) / (1024 * 1024):.1f}MB\n\n"
-                    f"✍️ Watermark: {WATERMARK_TEXT}\n\n"
-                    f"🔄 Status: Adding watermark..."
-                )
+            await self.safe_edit(
+                f"🎬 Processing video {index}/{total}\n"
+                f"📥 File: {os.path.basename(video_path)}\n"
+                f"📏 Size: {os.path.getsize(video_path) / (1024 * 1024):.1f}MB\n\n"
+                f"✍️ Watermark: {WATERMARK_TEXT}\n\n"
+                f"🔄 Adding watermark..."
+            )
             
             # Add watermark
             watermarked_path = await add_text_watermark(video_path)
@@ -212,19 +229,11 @@ class BatchWatermarkBot:
                 return False
             
             # Generate thumbnail
-            if self.status_msg:
-                await self.status_msg.edit_text(
-                    f"🎬 Processing video {index}/{total}\n"
-                    f"📸 Generating thumbnail..."
-                )
+            await self.safe_edit(f"🎬 Processing video {index}/{total}\n📸 Generating thumbnail...")
             thumbnail = await generate_video_thumbnail(watermarked_path)
             
             # Send watermarked video
-            if self.status_msg:
-                await self.status_msg.edit_text(
-                    f"🎬 Processing video {index}/{total}\n"
-                    f"📤 Uploading to Telegram..."
-                )
+            await self.safe_edit(f"🎬 Processing video {index}/{total}\n📤 Uploading to Telegram...")
             
             caption = f"""✅ Video {index}/{total} Processed
 
@@ -252,6 +261,10 @@ Use /cancel to stop processing."""
             
             return True
             
+        except FloodWait as e:
+            logger.warning(f"Flood wait: {e.value}s")
+            await asyncio.sleep(e.value)
+            return await self.process_single_video(message, video_path, index, total)
         except Exception as e:
             logger.error(f"Process failed: {e}")
             await message.reply(f"❌ Error processing video {index}/{total}: {str(e)[:100]}")
@@ -264,6 +277,7 @@ Use /cancel to stop processing."""
         
         self.is_processing = True
         self.cancel_flag = False
+        self.current_chat_id = message.chat.id
         
         # Send initial status
         self.status_msg = await message.reply(
@@ -277,7 +291,7 @@ Use /cancel to stop processing."""
         for idx, video_msg in enumerate(videos, 1):
             # Check if cancelled
             if self.cancel_flag:
-                await self.status_msg.edit_text(
+                await self.safe_edit(
                     f"🛑 Batch processing cancelled!\n"
                     f"✅ Completed: {success_count}/{total}\n"
                     f"❌ Remaining: {total - success_count}"
@@ -285,10 +299,7 @@ Use /cancel to stop processing."""
                 break
             
             # Download video
-            await self.status_msg.edit_text(
-                f"🎬 Processing video {idx}/{total}\n"
-                f"📥 Downloading video {idx}..."
-            )
+            await self.safe_edit(f"🎬 Processing video {idx}/{total}\n📥 Downloading video {idx}...")
             
             video_path = await self.download_media(video_msg)
             if not video_path:
@@ -305,7 +316,7 @@ Use /cancel to stop processing."""
         
         # Final status
         if not self.cancel_flag:
-            await self.status_msg.edit_text(
+            await self.safe_edit(
                 f"✅ Batch processing completed!\n"
                 f"📊 Success: {success_count}/{total}\n"
                 f"✍️ Watermark: {WATERMARK_TEXT}\n\n"
@@ -314,6 +325,7 @@ Use /cancel to stop processing."""
         
         self.is_processing = False
         self.status_msg = None
+        self.current_chat_id = None
     
     def register_handlers(self):
         """Register bot commands"""
@@ -321,7 +333,7 @@ Use /cancel to stop processing."""
         @self.app.on_message(filters.command("start"))
         async def start_cmd(client, message: Message):
             await message.reply(
-                "🎬 *Batch Watermark Bot*\n\n"
+                f"🎬 *Batch Watermark Bot*\n\n"
                 f"✍️ Fixed Watermark: `{WATERMARK_TEXT}`\n\n"
                 "Send me **multiple videos** and I'll:\n"
                 "✅ Add watermark to each\n"
@@ -354,7 +366,7 @@ Use /cancel to stop processing."""
         
         @self.app.on_message(filters.command("cancel"))
         async def cancel_cmd(client, message: Message):
-            if self.is_processing:
+            if self.is_processing and message.chat.id == self.current_chat_id:
                 self.cancel_flag = True
                 await message.reply(
                     "🛑 Cancel signal sent!\n"
@@ -378,13 +390,18 @@ Use /cancel to stop processing."""
                 await message.reply(f"Video too large ({file_size_mb:.1f}MB). Max: {MAX_VIDEO_SIZE_MB}MB")
                 return
             
-            # If already processing, add to queue
-            if self.is_processing:
+            # If already processing from same chat, add to queue
+            if self.is_processing and message.chat.id == self.current_chat_id:
                 self.processing_queue.append(message)
                 await message.reply(
                     f"⏳ Added to queue (position: {len(self.processing_queue)})\n"
                     f"Will process after current batch completes."
                 )
+                return
+            
+            # If processing from different chat, don't interfere
+            if self.is_processing:
+                await message.reply("⚠️ Bot is busy processing another batch. Please try again later.")
                 return
             
             # Start new batch
@@ -393,14 +410,12 @@ Use /cancel to stop processing."""
             # Ask if user wants to add more
             collect_msg = await message.reply(
                 "🎬 Starting batch processing!\n\n"
-                "Send more videos within 10 seconds, or send /done to start.\n"
-                "Or wait 10 seconds to start automatically."
+                "Send more videos within 10 seconds, or wait to start automatically.\n"
+                "Use /cancel to stop processing."
             )
             
             # Wait for more videos
             await asyncio.sleep(10)
-            
-            # Check for more videos in the meantime (simplified - just process what we have)
             await collect_msg.delete()
             
             # Start processing
@@ -419,7 +434,7 @@ Use /cancel to stop processing."""
         await self.app.start()
         me = await self.app.get_me()
         logger.info(f"✅ Bot started as: {me.first_name} (@{me.username})")
-        logger.info(f"✍️ Fixed watermark: {WATERMARK_TEXT}")
+        logger.info(f"✍️ Watermark: {WATERMARK_TEXT}")
         logger.info(f"📁 Downloads dir: {self.downloads_dir}")
         self.register_handlers()
     
@@ -432,6 +447,10 @@ Use /cancel to stop processing."""
 async def main():
     if not all([API_ID, API_HASH, BOT_TOKEN]):
         logger.error("Missing required environment variables")
+        return
+    
+    if not WATERMARK_TEXT:
+        logger.error("WATERMARK_TEXT environment variable not set!")
         return
     
     bot = BatchWatermarkBot()
