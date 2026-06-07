@@ -316,7 +316,6 @@ class TextWatermarkBot:
                 caption=caption,
                 thumb=thumbnail,
                 supports_streaming=True,
-                parse_mode="md"
             )
             
             await status_msg.delete()
@@ -356,7 +355,6 @@ class TextWatermarkBot:
                 "• Works in groups and private chats\n\n"
                 "*Example:*\n"
                 "`/setwatermark @MyChannel`",
-                parse_mode="md"
             )
         
         @self.app.on_message(filters.command("help"))
@@ -373,7 +371,6 @@ class TextWatermarkBot:
                 f"Text: `{self.watermark_text}`\n"
                 f"Max File Size: {MAX_VIDEO_SIZE_MB}MB\n\n"
                 f"Send a video to process!",
-                parse_mode="md"
             )
         
         @self.app.on_message(filters.command("setwatermark"))
@@ -382,7 +379,6 @@ class TextWatermarkBot:
                 await message.reply(
                     "❌ Please provide watermark text!\n"
                     "Example: `/setwatermark @MyChannel`",
-                    parse_mode="md"
                 )
                 return
             
@@ -392,7 +388,6 @@ class TextWatermarkBot:
                 f"✅ Watermark text set to:\n"
                 f"`{self.watermark_text}`\n\n"
                 f"Send a video to apply it!",
-                parse_mode="md"
             )
         
         @self.app.on_message(filters.command("watermark"))
@@ -423,7 +418,6 @@ class TextWatermarkBot:
                 await message.reply(
                     "❌ No watermark text set!\n"
                     "Use `/setwatermark YourText` first",
-                    parse_mode="md"
                 )
                 return
             
