@@ -43,23 +43,21 @@ def home():
 def health():
     return "OK"
 
+
 # ---------- FFMPEG FUNCTIONS ----------
-async def add_text_watermark(input_path: str, output_path: str = None, font_size: int = 30) -> Optional[str]:
-    """Add text watermark to video"""
+async def add_text_watermark(input_path: str, watermark_text: str, output_path: str = None, font_size: int = 30) -> Optional[str]:
+    """Add text watermark to video using ffmpeg drawtext"""
     try:
         if not output_path:
             base, ext = os.path.splitext(input_path)
             output_path = f"{base}_watermarked{ext}"
         
-        # Escape special characters
-        safe_text = WATERMARK_TEXT.replace("'", "'\\''").replace(":", "\\:").replace("@", "\\@")
-        
-        # Simpler command that works on Render
+        # Simpler command that definitely works
         cmd = [
             "ffmpeg",
             "-y",
             "-i", input_path,
-            "-vf", f"drawtext=text='{safe_text}':fontcolor=white:fontsize={font_size}:x=10:y=10",
+            "-vf", f"drawtext=text='{watermark_text}':fontcolor=white:fontsize={font_size}:x=10:y=10",
             "-c:v", "libx264",
             "-preset", "ultrafast",
             "-crf", "28",
@@ -67,7 +65,7 @@ async def add_text_watermark(input_path: str, output_path: str = None, font_size
             output_path
         ]
         
-        logger.info(f"Running ffmpeg on {input_path}")
+        logger.info(f"🎨 Running ffmpeg...")
         
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -75,29 +73,21 @@ async def add_text_watermark(input_path: str, output_path: str = None, font_size
             stderr=asyncio.subprocess.PIPE
         )
         
-        try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
-            
-            if proc.returncode != 0:
-                error_msg = stderr.decode()[:500]
-                logger.error(f"FFmpeg error: {error_msg}")
-                return None
-            
-            if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-                logger.info(f"Watermark added successfully")
-                return output_path
-            else:
-                logger.error("Output file missing")
-                return None
-                
-        except asyncio.TimeoutError:
-            logger.error("FFmpeg timeout - killing process")
-            proc.kill()
-            await proc.wait()
+        stdout, stderr = await proc.communicate()
+        
+        if proc.returncode != 0:
+            logger.error(f"❌ FFmpeg error: {stderr.decode()[:500]}")
+            return None
+        
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            logger.info(f"✅ Watermark added")
+            return output_path
+        else:
+            logger.error("❌ Output file missing")
             return None
             
     except Exception as e:
-        logger.error(f"Exception in watermark: {e}")
+        logger.error(f"❌ Exception: {e}")
         return None
 
 async def generate_video_thumbnail(video_path: str, second: int = 10) -> Optional[str]:
