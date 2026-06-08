@@ -237,12 +237,6 @@ class BatchWatermarkBot:
             
             # Compress if needed
             current_path = video_path
-            if file_size_mb > 500:
-                await status_msg.edit_text(f"📦 Compressing video {index}/{total}...")
-                compressed = await compress_video(video_path, target_size_mb=200)
-                if compressed:
-                    current_path = compressed
-                    logger.info("Compressed successfully")
             
             # Add watermark
             await status_msg.edit_text(f"✍️ Adding watermark to video {index}/{total}...")
