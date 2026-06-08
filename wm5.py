@@ -283,20 +283,20 @@ Watermark: {'ON' if self.watermark_enabled else 'OFF'}"""
             )
             
             # Cleanup
-            finally:
-                for path in {
-                    video_path,
-                    current_path,
-                    watermarked,
-                    thumbnail
-                }:
-                    try:
-                        if path and os.path.exists(path):
-                            os.remove(path)
-                    except Exception:
-                        pass
-            
+            for path in {
+                video_path,
+                current_path,
+                watermarked,
+                thumbnail
+            }:
+                try:
+                    if path and os.path.exists(path):
+                        os.remove(path)
+                except Exception:
+                    pass
+
             return True
+           
             
         except Exception as e:
             logger.error(f"Process failed: {e}")
